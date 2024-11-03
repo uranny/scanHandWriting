@@ -27,9 +27,15 @@ import androidx.core.view.WindowInsetsCompat
 import com.example.scanhandwriting.databinding.ActivityMainBinding
 import com.example.scanhandwriting.databinding.BottomSheetBinding
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.Translator
+import com.google.mlkit.nl.translate.TranslatorOptions
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class MainActivity : AppCompatActivity() {
@@ -69,7 +75,11 @@ class MainActivity : AppCompatActivity() {
         progressDialog.setTitle("Please wait")
         progressDialog.setCanceledOnTouchOutside(false)
 
-        textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        if(SpinnerData.startRang == 0){
+            textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        } else if(SpinnerData.startRang == 1){
+            textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+        }
 
         val clickListener = View.OnClickListener { view ->
             when(view.id){
@@ -90,6 +100,8 @@ class MainActivity : AppCompatActivity() {
         binding.scanBtn.setOnClickListener(clickListener)
     }
 
+
+    // 이미지 인식, 내용 복사 ---------------------------------------------------------------------------
     private fun recognizeTextFromImage() {
         progressDialog.setMessage("이미지 준비중...")
         progressDialog.show()
@@ -113,9 +125,9 @@ class MainActivity : AppCompatActivity() {
             progressDialog.dismiss()
             showToast("${e.message}")
         }
-
     }
 
+    // 갤러리, 카메라 요청 -----------------------------------------------------------------------------
     private fun showInputImageDialog(id : Int){
         if (id == 0){
             if(checkCameraPremission()){
@@ -132,7 +144,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 갤러리, 카메라 요청 -----------------------------------------------------------------------------
     private fun pickImageGallery(){
         val intent = Intent(Intent.ACTION_PICK)
         intent.type = "image/*"
@@ -233,18 +244,70 @@ class MainActivity : AppCompatActivity() {
     }
 
     // BottomSheet 함수 -----------------------------------------------------------------------------
-    fun showBottomSheet(recognizerText : String){
+
+    var translatorKorean : Translator? = null
+    var translatorEnglish : Translator? = null
+    var booleanKorean = false
+    var booleanEnglish = false
+
+    private fun showBottomSheet(recognizerText : String){
         val bottomSheetDialog = BottomSheetDialog(this)
 
         bsbinding = BottomSheetBinding.inflate(layoutInflater)
-        bottomSheetDialog.setContentView(bsbinding.root)
 
+        bottomSheetDialog.setContentView(bsbinding.root)
         bsbinding.copyContent.text = recognizerText
 
         bsbinding.copyBtn.setOnClickListener {
             val contentToCopy = bsbinding.copyContent.text.toString()
             copyClipBoard(contentToCopy)
         }
+
+        when(SpinnerData.targetRang){ // 번역할 거
+            0 -> {
+
+                var englishOption : TranslatorOptions
+
+                if (SpinnerData.startRang == 0){
+                    englishOption = TranslatorOptions.Builder()
+                        .setSourceLanguage(TranslateLanguage.ENGLISH)
+                        .setTargetLanguage(TranslateLanguage.ENGLISH)
+                        .build()
+                }else{
+                    englishOption = TranslatorOptions.Builder()
+                        .setSourceLanguage(TranslateLanguage.KOREAN)
+                        .setTargetLanguage(TranslateLanguage.ENGLISH)
+                        .build()
+                }
+
+                translatorEnglish = Translation.getClient(englishOption)
+                downloadModel(0)
+            }
+            1 -> {
+
+                var koreanOption : TranslatorOptions
+
+                if (SpinnerData.startRang == 1){
+                    koreanOption = TranslatorOptions.Builder()
+                        .setSourceLanguage(TranslateLanguage.KOREAN)
+                        .setTargetLanguage(TranslateLanguage.KOREAN)
+                        .build()
+                }else{
+                    koreanOption = TranslatorOptions.Builder()
+                        .setSourceLanguage(TranslateLanguage.ENGLISH)
+                        .setTargetLanguage(TranslateLanguage.KOREAN)
+                        .build()
+                }
+
+                translatorKorean = Translation.getClient(koreanOption)
+                downloadModel(1)
+            }
+        }
+
+        bsbinding.transBtn.setOnClickListener {
+            translation(SpinnerData.targetRang)
+        }
+
         bottomSheetDialog.show()
     }
 
@@ -255,8 +318,63 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "클립보드에 복사됨: $content", Toast.LENGTH_SHORT).show()
     }
 
+    private fun translation(target: Int){
+        when(target){
+            0 -> {
+                if (booleanEnglish){
+                    showToast("영어로 번역됨")
+                    translatorEnglish!!.translate(bsbinding.copyContent.text.toString())
+                        .addOnSuccessListener { string ->
+                            bsbinding.copyContent.text = string
+                        }
+                        .addOnFailureListener { e ->
+                            showToast("${e.message}")
+                        }
+                }
+            }
+            1 -> {
+                if (booleanKorean){
+                    showToast("한국어로 번역됨")
+                    translatorKorean!!.translate(bsbinding.copyContent.text.toString())
+                        .addOnSuccessListener { string ->
+                            bsbinding.copyContent.text = string
+                        }
+                        .addOnFailureListener { e ->
+                            showToast("${e.message}")
+                        }
+                }
+            }
+        }
+    }
+
+    private fun downloadModel(target : Int){
+        var conditions = DownloadConditions.Builder()
+            .requireWifi()
+            .build()
+
+        when(target){
+            0 -> {
+                translatorEnglish!!.downloadModelIfNeeded(conditions)
+                    .addOnSuccessListener { conditions ->
+                        booleanEnglish = true
+                    }
+                    .addOnFailureListener { e ->
+                        booleanEnglish = false
+                    }
+            }
+            1 -> {
+                translatorKorean!!.downloadModelIfNeeded(conditions)
+                    .addOnSuccessListener { conditions ->
+                        booleanKorean = true
+                    }
+                    .addOnFailureListener { e ->
+                        booleanKorean = false
+                    }
+            }
+        }
+    }
+
     private fun showToast(msg : String){
         Toast.makeText(this, "${msg}", Toast.LENGTH_SHORT).show()
     }
-
 }

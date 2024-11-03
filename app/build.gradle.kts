@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.text.recognition.korean)
     implementation(libs.play.services.mlkit.text.recognition)
     implementation(libs.play.services.mlkit.text.recognition.korean)
+    implementation(libs.translate)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
